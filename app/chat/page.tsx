@@ -7,7 +7,7 @@ import { Message, LearningPlan, LearningProgressItem, LearningSettings } from "@
 import { parseNotes } from "@/lib/parse-notes";
 import { getNotes, savePlan, getPlan, saveMessages, getMessages, updateSceneProgress, getSettings } from "@/lib/storage";
 import { generateOpeningMessage } from "@/lib/prompts";
-import { generateId } from "@/lib/utils";
+import { generateId, getApiPath } from "@/lib/utils";
 import { TodoPanel } from "@/components/TodoPanel";
 import { ChatInterface } from "@/components/ChatInterface";
 import { ChatInput } from "@/components/ChatInput";
@@ -79,7 +79,7 @@ export default function ChatPage() {
     append,
     setMessages: setAiMessages,
   } = useChat({
-    api: "/api/chat",
+    api: getApiPath("/api/chat"),
     body: {
       scene: currentScene,
       roundCount,

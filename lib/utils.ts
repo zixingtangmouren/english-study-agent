@@ -23,3 +23,17 @@ export function formatTimestamp(timestamp: string): string {
   });
 }
 
+/**
+ * 获取 API 路径（包含 basePath）
+ * 与 next.config.mjs 中的 basePath 保持一致
+ */
+export function getApiPath(path: string): string {
+  // basePath 与 next.config.mjs 中的配置保持一致
+  const basePath = "/english-agent";
+  // 确保 path 以 / 开头
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  // 移除 basePath 末尾的 /（如果有）
+  const basePathNormalized = basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
+  return `${basePathNormalized}${normalizedPath}`;
+}
+
