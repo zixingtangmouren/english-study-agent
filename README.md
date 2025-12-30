@@ -75,6 +75,45 @@ npm run dev
 - 纠正你的语法错误
 - 引导你使用新学的单词和句型
 
+## 部署
+
+### 构建生产版本
+
+```bash
+npm run build
+npm run start
+```
+
+默认运行在 `http://localhost:3000/english-agent`
+
+### Nginx 反向代理配置
+
+如果你需要通过 Nginx 将 `/english-agent` 路径转发到此应用：
+
+```nginx
+location /english-agent {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+}
+```
+
+### 修改子路径
+
+如果需要更改子路径或使用根路径部署，修改 `next.config.mjs`：
+
+```js
+const nextConfig = {
+  basePath: "/your-path",  // 修改为你需要的路径，删除此行则使用根路径
+};
+```
+
 ## 技术栈
 
 - [Next.js 14](https://nextjs.org/) - React 全栈框架
