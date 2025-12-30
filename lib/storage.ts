@@ -1,11 +1,18 @@
-import { LearningPlan, Message, ChatState } from "@/types";
+import { LearningPlan, Message, ChatState, LearningSettings } from "@/types";
 
 const STORAGE_KEYS = {
   NOTES: "english-notes",
   PLAN: "english-learning-plan",
   MESSAGES: "english-chat-messages",
   CHAT_STATE: "english-chat-state",
+  SETTINGS: "english-learning-settings",
 } as const;
+
+// 默认设置
+const DEFAULT_SETTINGS: LearningSettings = {
+  enableTranslation: true,
+  englishLevel: 3, // 初中水平
+};
 
 /**
  * 保存英语笔记
@@ -125,6 +132,32 @@ export function updateSceneProgress(sceneIndex: number, roundCount: number, comp
 }
 
 /**
+ * 保存学习设置
+ */
+export function saveSettings(settings: LearningSettings): void {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+  }
+}
+
+/**
+ * 获取学习设置
+ */
+export function getSettings(): LearningSettings {
+  if (typeof window !== "undefined") {
+    const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+    if (data) {
+      try {
+        return JSON.parse(data) as LearningSettings;
+      } catch {
+        // fall through
+      }
+    }
+  }
+  return DEFAULT_SETTINGS;
+}
+
+/**
  * 清除所有学习数据
  */
 export function clearAllData(): void {
@@ -133,6 +166,7 @@ export function clearAllData(): void {
     localStorage.removeItem(STORAGE_KEYS.PLAN);
     localStorage.removeItem(STORAGE_KEYS.MESSAGES);
     localStorage.removeItem(STORAGE_KEYS.CHAT_STATE);
+    // 保留设置，不清除
   }
 }
 

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, ArrowRight, Sparkles } from "lucide-react";
+import { BookOpen, ArrowRight, Sparkles, Settings } from "lucide-react";
+import { EnglishLevel, ENGLISH_LEVEL_INFO, LearningSettings } from "@/types";
+import { getSettings, saveSettings } from "@/lib/storage";
 
 const exampleNotes = `## 介绍自己的职业
 ### 单词
@@ -47,7 +49,23 @@ const exampleNotes = `## 介绍自己的职业
 export default function Home() {
   const [notes, setNotes] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [settings, setSettings] = useState<LearningSettings>({
+    enableTranslation: true,
+    englishLevel: 3,
+  });
   const router = useRouter();
+
+  // 加载保存的设置
+  useEffect(() => {
+    const savedSettings = getSettings();
+    setSettings(savedSettings);
+  }, []);
+
+  const handleSettingsChange = (newSettings: Partial<LearningSettings>) => {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    saveSettings(updated);
+  };
 
   const handleSubmit = async () => {
     if (!notes.trim()) return;
@@ -56,6 +74,8 @@ export default function Home() {
     
     // 保存笔记到 localStorage
     localStorage.setItem("english-notes", notes);
+    // 确保设置已保存
+    saveSettings(settings);
     
     // 跳转到对话页面
     router.push("/chat");
@@ -79,6 +99,53 @@ export default function Home() {
           <p className="text-muted-foreground text-lg max-w-md mx-auto">
             输入您的英语笔记，AI 外教将根据场景与您进行对话练习
           </p>
+        </div>
+
+        {/* Settings Panel */}
+        <div className="p-4 rounded-xl border border-border bg-card/50 space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Settings className="w-4 h-4 text-muted-foreground" />
+            学习设置
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* 翻译开关 */}
+            <div className="flex items-center justify-between p-3 rounded-lg bg-background border border-border">
+              <div>
+                <div className="text-sm font-medium">开启翻译</div>
+                <div className="text-xs text-muted-foreground">AI 回复时提供中文翻译</div>
+              </div>
+              <button
+                onClick={() => handleSettingsChange({ enableTranslation: !settings.enableTranslation })}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  settings.enableTranslation ? "bg-primary" : "bg-muted"
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                    settings.enableTranslation ? "left-7" : "left-1"
+                  }`}
+                />
+              </button>
+            </div>
+            
+            {/* 英语等级选择 */}
+            <div className="p-3 rounded-lg bg-background border border-border">
+              <div className="text-sm font-medium mb-2">英语水平</div>
+              <select
+                value={settings.englishLevel}
+                onChange={(e) => handleSettingsChange({ englishLevel: Number(e.target.value) as EnglishLevel })}
+                className="w-full px-3 py-2 rounded-md border border-border bg-card text-sm
+                           focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              >
+                {([1, 2, 3, 4, 5, 6, 7, 8, 9] as EnglishLevel[]).map((level) => (
+                  <option key={level} value={level}>
+                    {level}级 - {ENGLISH_LEVEL_INFO[level].stage} ({ENGLISH_LEVEL_INFO[level].description})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         {/* Notes Input */}

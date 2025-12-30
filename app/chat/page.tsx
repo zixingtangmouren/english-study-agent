@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "ai/react";
-import { Message, LearningPlan, Scene } from "@/types";
+import { Message, LearningPlan, LearningProgressItem, LearningSettings } from "@/types";
 import { parseNotes } from "@/lib/parse-notes";
-import { getNotes, savePlan, getPlan, saveMessages, getMessages, updateSceneProgress } from "@/lib/storage";
-import { generateOpeningMessage, generateSceneTransitionMessage, generateCompletionMessage } from "@/lib/prompts";
+import { getNotes, savePlan, getPlan, saveMessages, getMessages, updateSceneProgress, getSettings } from "@/lib/storage";
+import { generateOpeningMessage } from "@/lib/prompts";
 import { generateId } from "@/lib/utils";
 import { TodoPanel } from "@/components/TodoPanel";
 import { ChatInterface } from "@/components/ChatInterface";
@@ -21,8 +21,56 @@ export default function ChatPage() {
   const [roundCount, setRoundCount] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
   const [allCompleted, setAllCompleted] = useState(false);
+  const [settings, setSettings] = useState<LearningSettings>({
+    enableTranslation: true,
+    englishLevel: 3,
+  });
 
   const currentScene = plan?.scenes[currentSceneIndex];
+
+  // 处理工具调用返回的进度更新
+  const handleProgressUpdate = useCallback((progressData: LearningProgressItem[]) => {
+    if (!plan) return;
+
+    const updatedScenes = plan.scenes.map((scene) => {
+      const progressItem = progressData.find((p) => p.scene === scene.name);
+      if (progressItem) {
+        return {
+          ...scene,
+          completed: progressItem.status === "completed",
+          roundCount: progressItem.status === "completed" ? 5 : scene.roundCount,
+        };
+      }
+      return scene;
+    });
+
+    // 找到当前进行中的场景
+    const inProgressIndex = progressData.findIndex((p) => p.status === "in_progress");
+    const newCurrentIndex = inProgressIndex >= 0 
+      ? plan.scenes.findIndex((s) => s.name === progressData[inProgressIndex].scene)
+      : currentSceneIndex;
+
+    // 检查是否所有场景都完成了
+    const allDone = progressData.every((p) => p.status === "completed");
+
+    const updatedPlan: LearningPlan = {
+      ...plan,
+      scenes: updatedScenes,
+      currentSceneIndex: newCurrentIndex >= 0 ? newCurrentIndex : currentSceneIndex,
+    };
+
+    setPlan(updatedPlan);
+    savePlan(updatedPlan);
+
+    if (newCurrentIndex !== currentSceneIndex && newCurrentIndex >= 0) {
+      setCurrentSceneIndex(newCurrentIndex);
+      setRoundCount(0);
+    }
+
+    if (allDone) {
+      setAllCompleted(true);
+    }
+  }, [plan, currentSceneIndex]);
 
   // AI Chat hook
   const {
@@ -35,28 +83,37 @@ export default function ChatPage() {
     body: {
       scene: currentScene,
       roundCount,
+      allScenes: plan?.scenes || [],
+      settings,
+    },
+    onToolCall: async ({ toolCall }) => {
+      // 处理工具调用
+      if (toolCall.toolName === "update_progress") {
+        const args = toolCall.args as { progress: LearningProgressItem[] };
+        if (args.progress) {
+          handleProgressUpdate(args.progress);
+        }
+        return args.progress;
+      }
     },
     onFinish: (message) => {
-      // 保存 AI 回复到本地消息
-      const newMessage: Message = {
-        id: generateId(),
-        role: "assistant",
-        content: message.content,
-        timestamp: new Date().toISOString(),
-      };
-      setLocalMessages((prev) => {
-        const updated = [...prev, newMessage];
-        saveMessages(updated);
-        return updated;
-      });
+      // 只保存有内容的消息
+      if (message.content) {
+        const newMessage: Message = {
+          id: generateId(),
+          role: "assistant",
+          content: message.content,
+          timestamp: new Date().toISOString(),
+        };
+        setLocalMessages((prev) => {
+          const updated = [...prev, newMessage];
+          saveMessages(updated);
+          return updated;
+        });
 
-      // 增加轮次计数
-      const newRoundCount = roundCount + 1;
-      setRoundCount(newRoundCount);
-
-      // 检查是否需要切换场景
-      if (newRoundCount >= 5 && plan) {
-        handleSceneComplete();
+        // 增加轮次计数
+        const newRoundCount = roundCount + 1;
+        setRoundCount(newRoundCount);
       }
     },
   });
@@ -68,6 +125,10 @@ export default function ChatPage() {
       router.push("/");
       return;
     }
+
+    // 加载用户设置
+    const savedSettings = getSettings();
+    setSettings(savedSettings);
 
     // 尝试获取已保存的计划
     let existingPlan = getPlan();
@@ -115,80 +176,7 @@ export default function ChatPage() {
     }
   }, [isInitialized, plan, currentScene, localMessages.length, append]);
 
-  // 处理场景完成
-  const handleSceneComplete = useCallback(() => {
-    if (!plan) return;
-
-    // 更新场景状态
-    const updatedScenes = [...plan.scenes];
-    updatedScenes[currentSceneIndex].completed = true;
-    updatedScenes[currentSceneIndex].roundCount = 5;
-
-    // 检查是否还有下一个场景
-    const nextSceneIndex = currentSceneIndex + 1;
-    
-    if (nextSceneIndex < updatedScenes.length) {
-      // 切换到下一个场景
-      const updatedPlan: LearningPlan = {
-        ...plan,
-        scenes: updatedScenes,
-        currentSceneIndex: nextSceneIndex,
-      };
-      setPlan(updatedPlan);
-      savePlan(updatedPlan);
-      setCurrentSceneIndex(nextSceneIndex);
-      setRoundCount(0);
-
-      // 添加场景切换消息
-      const transitionMessage: Message = {
-        id: generateId(),
-        role: "assistant",
-        content: generateSceneTransitionMessage(
-          plan.scenes[currentSceneIndex],
-          plan.scenes[nextSceneIndex]
-        ),
-        timestamp: new Date().toISOString(),
-      };
-      setLocalMessages((prev) => {
-        const updated = [...prev, transitionMessage];
-        saveMessages(updated);
-        return updated;
-      });
-
-      // 清空 AI 消息并开始新场景
-      setAiMessages([]);
-      setTimeout(() => {
-        append({
-          role: "user",
-          content: "请开始新场景的提问",
-        });
-      }, 1000);
-    } else {
-      // 所有场景完成
-      setAllCompleted(true);
-      const completionMessage: Message = {
-        id: generateId(),
-        role: "assistant",
-        content: generateCompletionMessage(),
-        timestamp: new Date().toISOString(),
-      };
-      setLocalMessages((prev) => {
-        const updated = [...prev, completionMessage];
-        saveMessages(updated);
-        return updated;
-      });
-
-      // 更新最终计划状态
-      const finalPlan: LearningPlan = {
-        ...plan,
-        scenes: updatedScenes,
-      };
-      savePlan(finalPlan);
-      setPlan(finalPlan);
-    }
-  }, [plan, currentSceneIndex, append, setAiMessages]);
-
-  // 更新场景进度
+  // 更新场景进度（同步到 localStorage）
   useEffect(() => {
     if (plan && currentSceneIndex >= 0) {
       updateSceneProgress(currentSceneIndex, roundCount, roundCount >= 5);
